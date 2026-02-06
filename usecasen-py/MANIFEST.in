@@ -1,0 +1,26 @@
+# Include documentation
+include README.md
+include TESTING.md
+include LICENSE
+
+# Include requirements
+include requirements.txt
+
+# Exclude development and build files
+exclude .gitignore
+exclude setup.py
+exclude *.pyc
+exclude .DS_Store
+
+# Exclude test files
+exclude test_*.py
+
+# Exclude legacy wrapper (users should use new API)
+exclude casen_core.py
+
+# Exclude directories
+recursive-exclude __pycache__ *
+recursive-exclude *.egg-info *
+recursive-exclude build *
+recursive-exclude dist *
+recursive-exclude .claude *
