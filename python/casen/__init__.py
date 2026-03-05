@@ -21,19 +21,22 @@ License: MIT
 """
 
 from casen.downloader import CasenDownloader
-from casen.stata_io import to_stata, is_stata_available
+from casen.stata_io import to_stata as to_stata_data, is_stata_available
 from casen.metadata import search, get_labels
 from casen.utils import normalize_text, clear_cache
 
 from typing import Optional, Dict, List
 import pandas as pd
 
+# Backward-compatible public alias
+to_stata = to_stata_data
+
 
 # ============================================================================
 # PUBLIC API - VERB-BASED NAMING (Industry Standard)
 # ============================================================================
 
-def download(year: int, to_stata: bool = True, verbose: bool = True) -> Optional[pd.DataFrame]:
+def download(year: int, to_stata: bool = False, verbose: bool = True) -> Optional[pd.DataFrame]:
     """
     Download CASEN survey data for a single year.
 
@@ -67,12 +70,12 @@ def download(year: int, to_stata: bool = True, verbose: bool = True) -> Optional
     df = downloader.download_casen(year)
 
     if df is not None and to_stata:
-        to_stata(df)
+        to_stata_data(df)
 
     return df
 
 
-def download_batch(years: List[int], to_stata: bool = True, verbose: bool = True) -> Dict[int, pd.DataFrame]:
+def download_batch(years: List[int], to_stata: bool = False, verbose: bool = True) -> Dict[int, pd.DataFrame]:
     """
     Download CASEN survey data for multiple years (batch processing).
 

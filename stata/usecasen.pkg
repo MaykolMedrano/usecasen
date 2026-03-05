@@ -1,0 +1,12 @@
+v 3
+d usecasen: descarga inteligente de microdatos CASEN (Chile)
+d
+d Version: 3.2.0
+d Author: Maykol Medrano
+d Email: mmedrano2@uc.cl
+d
+d Requiere Stata 14+.
+d Para archivos .rar puede requerir extractor externo (WinRAR/7-Zip/unrar/unar/bsdtar).
+d
+f usecasen.ado
+f usecasen.sthlp

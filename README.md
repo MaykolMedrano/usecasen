@@ -1,74 +1,133 @@
+<div align="center">
+  <img src="https://raw.githubusercontent.com/MaykolMedrano/usecasen/main/docs/logo.png" alt="usecasen logo" width="200" onerror="this.style.display='none'"/>
+  
 # usecasen
+  
+  **La suite profesional definitiva para descarga, recodificación y análisis de la Encuesta CASEN (Chile) en Python y Stata.**
 
-Herramientas para descargar y analizar datos de la Encuesta CASEN (Chile).
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
+  [![Stata](https://img.shields.io/badge/Stata-14%2B-1c4587.svg)](https://www.stata.com/)
+  [![Version](https://img.shields.io/badge/version-1.0.0--v3.2.0-blue.svg)](https://github.com/MaykolMedrano/usecasen)
+  [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/MaykolMedrano/usecasen)
+  
+  [Ver Documentación Python](python/README.md) • [Ver Documentación Stata](stata/README.md) • [Reportar Bug](https://github.com/MaykolMedrano/usecasen/issues)
+</div>
 
-## Componentes
+---
 
-### 1. usecasen.ado (Stata)
-Comando Stata para descarga automática de datos CASEN con sistema inteligente de detección de archivos.
+## Sobre el Proyecto
 
-**Características:**
-- Descarga automática desde el sitio oficial del Ministerio de Desarrollo Social
-- Sistema de scoring inteligente para detectar archivos correctos (MATA)
-- Soporte multiplataforma (Windows/Unix/macOS)
-- Detección automática de descompresores (WinRAR, 7-Zip, unrar)
-- Sistema de caché para evitar descargas repetidas
-- Conversión automática de encoding para años antiguos
+**`usecasen`** es una herramienta unificada para **Python** y **Stata** que automatiza la búsqueda, descarga y procesamiento de los microdatos de la **Encuesta de Caracterización Socioeconómica Nacional (CASEN)** de Chile.
 
-**Uso:**
-```stata
-usecasen, years(2022) clear
-usecasen, years(2017 2020 2022) path("data") replace
-```
+Cuenta con un sistema de **scoring inteligente** integrado que detecta y extrae de forma automática los archivos oficiales correctos desde los servidores del Ministerio de Desarrollo Social y Familia (MDSF), resolviendo inconsistencias de encoding heredadas y operando de forma transparente sobre múltiples formatos de compresión (`.dta`, `.zip`, `.rar`).
 
-### 2. usecasen-py (Python)
-Librería Python profesional para descarga y análisis de datos CASEN.
+### Características Principales
 
-**Características:**
-- 100% operaciones en memoria (sin uso de disco)
-- Sistema de scoring inteligente (portado desde MATA)
-- Integración vectorizada con Stata 17+
-- Búsqueda eficiente de variables sin cargar datos completos
-- Extracción de etiquetas de valores (codebook)
-- Sistema de caché para búsquedas instantáneas
+- **Smart Scoring & Fallbacks**: Motor de búsqueda que evalúa y aísla el archivo `.dta` principal entre cientos de documentos y anexos disponibles.
+- **Encoding Automático**: Traduce de forma nativa las bases anteriores a 2013 (latin1/ISO-8859) a UTF-8 para garantizar compatibilidad con versiones modernas de software.
+- **Soporte Multi-Compresión**: Trabaja con volúmenes masivos comprimidos en formatos como RAR y ZIP (ej. CASEN 2017) invocando automáticamente las herramientas del sistema (7z, winrar, powershell, unar, bsdtar).
+- **Procesamiento In-Memory (Python)**: Configurado para descargar y cargar los datos directamente en memoria RAM, eliminando cuellos de botella por operaciones de I/O en disco.
+- **Caché Inteligente**: Guarda localmente el dataset tras la primera consulta, reduciendo el tiempo de carga a milisegundos en peticiones subsecuentes.
 
-**Instalación:**
+---
+
+## 1. Paquete Python (`python/casen`)
+
+La librería de Python es ideal para interactuar con CASEN de manera exploratoria, rápida, y exportando DataFrames, logrando inyecciones directas en `pandas`.
+
+**Instalación Rápida:**
+
 ```bash
 pip install usecasen
 ```
 
-**Uso:**
+**Uso Exploratorio Rápido:**
+
 ```python
 import casen
 
-# Descargar datos
-df = casen.download(2022)
+# Descargar datos (con logs de progreso)
+df_2022 = casen.download(2022)
 
-# Buscar variables
-results = casen.search("educacion")
+# Buscar en los metadatos (etiquetas de variable) en todo el archivo 2022, SIN descargar
+resultados = casen.search("educacion")
 
-# Obtener etiquetas
-labels = casen.get_labels("region", 2022)
+# Consultar el diccionario (codebook) nativo de la CASEN
+diccionario_regiones = casen.get_labels("region", 2022)
+print(diccionario_regiones)
+# {1: 'Tarapacá', 2: 'Antofagasta', ...}
 ```
 
-Ver documentación completa en [usecasen-py/README.md](usecasen-py/README.md)
+> _Ver guía completa de Python y su integración a Stata (sfi) en:_ [`python/README.md`](python/README.md)
+
+---
+
+## 2. Wrapper para Stata (`stata/usecasen.ado`)
+
+Comando robusto, compatible desde Stata 14 hasta 19, diseñado para procesar y consolidar masivamente datasets, logrando la limpieza nativa.
+
+**Instalación Rápida:**
+
+```stata
+net install usecasen, from("https://raw.githubusercontent.com/MaykolMedrano/usecasen/main/stata") replace
+```
+
+**Uso Clásico:**
+
+```stata
+* Descargar/cargar el último año disponible con limpieza en memoria
+usecasen, years(2022) clear
+
+* Descarga masiva para hacer paneles (descarga en /data y reemplaza)
+usecasen, years(2006 2017 2020 2022) path("data") replace
+
+* Modo hardcore con logs y timeouts (para redes lentas o debug)
+usecasen, years(1990) retries(3) timeout(600) debugscore clear
+```
+
+> _Ver guía completa, comandos y ayudas de Stata en:_ [`stata/README.md`](stata/README.md)
+
+---
+
+## Estructura del Repositorio
+
+```text
+usecasen
+ |- python/             # API PyPI, Core in-memory, Metadata Scanner, Tests
+ |- stata/              # Wrapper Stata (.ado/.sthlp/.pkg), Fallback extracts
+ |- .github/workflows/  # CI/CD (Pytest Actions)
+ `- README.md           # This file
+```
+
+---
 
 ## Autor
 
-**Maykol Medrano**
-Pontificia Universidad Católica de Chile
-Email: mmedrano2@uc.cl
-GitHub: [@MaykolMedrano](https://github.com/MaykolMedrano)
+| ![Maykol Medrano](https://avatars.githubusercontent.com/u/74303889?v=4&s=100) |
+| :---: |
+| **Maykol Medrano** <br> Pontificia Universidad Católica de Chile <br> [@MaykolMedrano](https://github.com/MaykolMedrano) |
 
-## Licencia
+Email de Contacto: **<mmedrano2@uc.cl>**
 
-MIT License - Ver [LICENSE](usecasen-py/LICENSE) para más detalles.
+---
 
-## Datos
+## Licencia & Citas
 
-Los datos son propiedad del Ministerio de Desarrollo Social y Familia de Chile y están disponibles públicamente en:
-https://observatorio.ministeriodesarrollosocial.gob.cl/
+El código de este producto está licenciado nativamente bajo **MIT License**, mira [LICENSE](python/LICENSE) para detalles completos.
 
-## Contribuciones
+Si este proyecto ha acelerado substancialmente tu investigación o tesis, puedes referenciar el repositorio:
 
-Issues y Pull Requests son bienvenidos en https://github.com/MaykolMedrano/usecasen
+```bibtex
+@software{usecasen2026,
+  author = {Medrano, Maykol},
+  title = {usecasen: Herramientas Python y Stata para la Encuesta CASEN},
+  version = {1.0.0},
+  year = {2026},
+  publisher = {GitHub},
+  url = {https://github.com/MaykolMedrano/usecasen}
+}
+```
+
+> **Aviso Legal de Datos**:
+Los microdatos que descarga esta herramienta son propiedad intelectual y pública del Ministerio de Desarrollo Social y Familia (MDSF) del Gobierno de Chile [Observatorio Social](https://observatorio.ministeriodesarrollosocial.gob.cl/).

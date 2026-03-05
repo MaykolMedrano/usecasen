@@ -6,12 +6,18 @@ Implements intelligent URL scoring system ported from MATA.
 """
 
 import io
+import os
+import shutil
+import subprocess
+import tempfile
 import zipfile
-from typing import Optional, Dict
+from pathlib import Path
+from typing import Optional, Dict, List
 import warnings
 
 import pandas as pd
 import requests
+from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 
@@ -31,6 +37,13 @@ class CasenDownloader:
     # Available years of CASEN survey
     AVAILABLE_YEARS = [1990, 1992, 1994, 1996, 1998, 2000, 2003, 2006, 2009,
                        2011, 2013, 2015, 2017, 2022, 2024]
+
+    # Common Windows install locations for WinRAR.
+    WINRAR_PATHS = [
+        r"C:\Program Files\WinRAR\WinRAR.exe",
+        r"C:\Program Files (x86)\WinRAR\WinRAR.exe",
+        r"D:\Program Files\WinRAR\WinRAR.exe",
+    ]
 
     def __init__(self, timeout: int = 30, chunk_size: int = 8192, verbose: bool = True):
         """
@@ -52,6 +65,13 @@ class CasenDownloader:
             'Accept-Encoding': 'gzip, deflate',
             'Connection': 'keep-alive',
         })
+
+    def _log(self, message: str) -> None:
+        """
+        Print message only when verbose mode is enabled.
+        """
+        if self.verbose:
+            print(message)
 
     def test_connectivity(self) -> bool:
         """
@@ -84,6 +104,22 @@ class CasenDownloader:
         else:
             return f"{self.BASE_DOMAIN}/encuesta-casen-{year}"
 
+    def _fetch_best_url(self, year: int) -> Optional[str]:
+        """
+        Resolve the best candidate download URL for a given CASEN year.
+        """
+        page_url = self._get_year_url(year)
+        html_content = self._fetch_html(page_url)
+
+        if html_content is None:
+            return None
+
+        best_url = self._get_best_link(html_content, str(year))
+        if not best_url:
+            return None
+
+        return self._normalize_url(best_url)
+
     def download_casen(self, year: int) -> Optional[pd.DataFrame]:
         """
         Download and parse CASEN survey for a given year.
@@ -94,46 +130,34 @@ class CasenDownloader:
         Returns:
             DataFrame with survey data, or None if failed
         """
-        print(f"  {year}: Buscando enlace...")
+        self._log(f"  {year}: Buscando enlace...")
 
-        # Step 1: Fetch HTML page (with year-specific URL pattern)
-        page_url = self._get_year_url(year)
-        html_content = self._fetch_html(page_url)
-
-        if html_content is None:
-            print(f"  {year}: [ERROR] No se pudo acceder a la web")
-            return None
-
-        # Step 2: Intelligent parsing with scoring system (MATA logic)
-        best_url = self._get_best_link(html_content, str(year))
+        best_url = self._fetch_best_url(year)
 
         if not best_url:
-            print(f"  {year}: [ERROR] No se encontró archivo de datos")
+            self._log(f"  {year}: [ERROR] No se encontró archivo de datos")
             return None
 
-        # Step 3: Normalize URL
-        best_url = self._normalize_url(best_url)
-
         # Step 4: Download file (in-memory)
-        print(f"  {year}: Descargando...")
+        self._log(f"  {year}: Descargando...")
         file_data = self._download_file(best_url)
 
         if file_data is None:
-            print(f"  {year}: [ERROR] Falló la descarga")
+            self._log(f"  {year}: [ERROR] Falló la descarga")
             return None
 
         # Step 5: Extract and load .dta (in-memory)
-        print(f"  {year}: Procesando archivo...")
+        self._log(f"  {year}: Procesando archivo...")
         df = self._extract_and_load_dta(file_data, year)
 
         if df is None:
-            print(f"  {year}: [ERROR] No se encontró .dta en el archivo")
+            self._log(f"  {year}: [ERROR] No se encontró .dta en el archivo")
             return None
 
-        print(f"  {year}: [OK] {len(df):,} observaciones cargadas")
+        self._log(f"  {year}: [OK] {len(df):,} observaciones cargadas")
         return df
 
-    def download_multiple(self, years: list[int], load_to_stata: bool = False) -> Dict[int, pd.DataFrame]:
+    def download_multiple(self, years: List[int], load_to_stata: bool = False) -> Dict[int, pd.DataFrame]:
         """
         Download multiple years of CASEN data.
 
@@ -147,10 +171,10 @@ class CasenDownloader:
         results = {}
         last_df = None
 
-        print("=" * 60)
-        print("  USECASEN Python v1.0 - Encuesta CASEN")
-        print("=" * 60)
-        print(f"Años: {years}")
+        self._log("=" * 60)
+        self._log("  USECASEN Python v1.0 - Encuesta CASEN")
+        self._log("=" * 60)
+        self._log(f"Años: {years}")
 
         # Test connectivity
         if self.verbose:
@@ -161,7 +185,7 @@ class CasenDownloader:
                 print("  [WARNING] Servidor no responde - las descargas pueden fallar")
                 print("  [SUGERENCIA] Verifique su conexión a Internet")
 
-        print()
+        self._log("")
 
         for year in years:
             df = self.download_casen(year)
@@ -169,15 +193,175 @@ class CasenDownloader:
                 results[year] = df
                 last_df = df
 
-        print("=" * 60)
+        self._log("=" * 60)
 
         # Load to Stata if requested (requires stata_io module)
         if load_to_stata and last_df is not None:
             from casen.stata_io import to_stata
-            print("Cargando última base a Stata...")
+            self._log("Cargando última base a Stata...")
             to_stata(last_df)
 
         return results
+
+    def _is_rar_file(self, file_data: io.BytesIO) -> bool:
+        """
+        Detect if payload is a RAR archive by signature.
+        """
+        file_data.seek(0)
+        signature = file_data.read(8)
+        file_data.seek(0)
+
+        # RAR4: 52 61 72 21 1A 07 00
+        # RAR5: 52 61 72 21 1A 07 01 00
+        return signature.startswith(b"Rar!\x1a\x07\x00") or signature.startswith(b"Rar!\x1a\x07\x01\x00")
+
+    def _select_best_dta_candidate(self, candidates: List[tuple], year: int) -> Optional[str]:
+        """
+        Pick the best .dta candidate from (name, size) entries.
+        """
+        if not candidates:
+            return None
+
+        year_str = str(year)
+        scored = []
+        for name, size in candidates:
+            score = self._calculate_score(name, year_str)
+            scored.append((score, size, name))
+
+        scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return scored[0][2]
+
+    def _extract_dta_from_zip(self, file_data: io.BytesIO, year: int) -> Optional[io.BytesIO]:
+        """
+        Extract best .dta file from ZIP archive.
+        """
+        file_data.seek(0)
+        with zipfile.ZipFile(file_data) as zf:
+            candidates = []
+            for info in zf.infolist():
+                name = info.filename
+                lower_name = name.lower()
+                if lower_name.endswith(".dta") and not lower_name.startswith("__macosx/"):
+                    candidates.append((name, info.file_size))
+
+            if not candidates:
+                return None
+
+            best_name = self._select_best_dta_candidate(candidates, year)
+            if best_name is None:
+                return None
+
+            if self.verbose:
+                print(f"       [INFO] Extrayendo desde ZIP: {best_name}")
+
+            with zf.open(best_name) as dta_file:
+                return io.BytesIO(dta_file.read())
+
+    def _build_rar_extract_commands(self, rar_path: str, output_dir: str) -> List[List[str]]:
+        """
+        Build candidate commands to extract RAR archives across platforms.
+        """
+        commands: List[List[str]] = []
+        output_with_sep = output_dir + os.sep
+
+        # Common CLI tools from PATH.
+        if shutil.which("unrar"):
+            commands.append(["unrar", "x", "-o+", "-inul", rar_path, output_with_sep])
+        if shutil.which("7z"):
+            commands.append(["7z", "x", "-y", f"-o{output_dir}", rar_path])
+        if shutil.which("unar"):
+            commands.append(["unar", "-q", "-o", output_dir, rar_path])
+        if shutil.which("bsdtar"):
+            commands.append(["bsdtar", "-xf", rar_path, "-C", output_dir])
+
+        # Explicit WinRAR path fallback on Windows.
+        for winrar_path in self.WINRAR_PATHS:
+            if Path(winrar_path).exists():
+                commands.append([winrar_path, "x", "-o+", "-inul", rar_path, output_with_sep])
+
+        return commands
+
+    def _extract_dta_from_rar(self, file_data: io.BytesIO, year: int) -> Optional[io.BytesIO]:
+        """
+        Extract best .dta file from RAR archive using external tools.
+        """
+        with tempfile.TemporaryDirectory(prefix="casen_rar_") as temp_dir:
+            temp_path = Path(temp_dir)
+            rar_path = temp_path / "casen_payload.rar"
+            out_dir = temp_path / "extract"
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            file_data.seek(0)
+            rar_path.write_bytes(file_data.read())
+
+            commands = self._build_rar_extract_commands(str(rar_path), str(out_dir))
+            if not commands:
+                if self.verbose:
+                    print("       [ERROR] No hay extractor RAR disponible (WinRAR/7z/unrar/unar/bsdtar)")
+                return None
+
+            extracted = False
+            for cmd in commands:
+                try:
+                    result = subprocess.run(
+                        cmd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=max(120, self.timeout * 8),
+                        check=False,
+                    )
+                    if result.returncode == 0:
+                        extracted = True
+                        break
+                except Exception:
+                    continue
+
+            if not extracted:
+                if self.verbose:
+                    print("       [ERROR] No se pudo descomprimir RAR con las herramientas disponibles")
+                return None
+
+            dta_paths = [path for path in out_dir.rglob("*.dta") if path.is_file()]
+            if not dta_paths:
+                if self.verbose:
+                    print("       [ERROR] El RAR no contiene archivos .dta")
+                return None
+
+            candidates = [
+                (str(path.relative_to(out_dir)).replace("\\", "/"), path.stat().st_size)
+                for path in dta_paths
+            ]
+            best_rel = self._select_best_dta_candidate(candidates, year)
+            if best_rel is None:
+                return None
+
+            best_path = out_dir / Path(best_rel)
+            if self.verbose:
+                print(f"       [INFO] Extrayendo desde RAR: {best_rel}")
+
+            return io.BytesIO(best_path.read_bytes())
+
+    def extract_dta_buffer(self, file_data: io.BytesIO, year: int) -> Optional[io.BytesIO]:
+        """
+        Resolve payload into a .dta buffer (supports direct .dta, ZIP, and RAR).
+        """
+        file_data.seek(0)
+
+        if zipfile.is_zipfile(file_data):
+            if self.verbose:
+                print("       [INFO] Archivo ZIP detectado")
+            return self._extract_dta_from_zip(file_data, year)
+
+        if self._is_rar_file(file_data):
+            if self.verbose:
+                print("       [INFO] Archivo RAR detectado")
+            return self._extract_dta_from_rar(file_data, year)
+
+        # Assume direct .dta payload.
+        if self.verbose:
+            print("       [INFO] Asumiendo archivo .dta directo")
+        file_data.seek(0)
+        return file_data
 
     def _fetch_html(self, url: str, retries: int = 3) -> Optional[str]:
         """
@@ -267,7 +451,7 @@ class CasenDownloader:
         Returns:
             Best matching URL or None
         """
-        # Normalize to lowercase (like MATA strlower)
+        # Keep original content for href extraction; use lowercase only for fallback parsing.
         content = html_content.lower()
 
         best_url = None
@@ -275,7 +459,7 @@ class CasenDownloader:
 
         # Extensions to search for (prioritize .dta direct, then compressed)
         extension_patterns = [
-            '.dta',         # Direct .dta files (e.g., CASEN 2024)
+            '.dta',
             '.dta.zip',
             '.sav.zip',
             '.dta.rar',
@@ -284,26 +468,47 @@ class CasenDownloader:
             '.rar',
         ]
 
+        # First pass: parse real href attributes to preserve exact casing/spaces.
+        try:
+            soup = BeautifulSoup(html_content, 'html.parser')
+            href_candidates = []
+
+            for a_tag in soup.find_all('a', href=True):
+                href = a_tag['href'].strip()
+                href_lower = href.lower()
+
+                if any(ext in href_lower for ext in extension_patterns):
+                    href_candidates.append(href)
+
+            for candidate in href_candidates:
+                score = self._calculate_score(candidate, year)
+                if score > max_score:
+                    max_score = score
+                    best_url = candidate
+
+            if best_url is not None:
+                return best_url
+
+        except Exception:
+            # Fallback to legacy text parser if HTML parsing fails.
+            pass
+
+        # Fallback pass: legacy text scanning.
         for ext in extension_patterns:
-            # Find all occurrences of the extension
             pos = 0
             while True:
                 ext_pos = content.find(ext, pos)
                 if ext_pos == -1:
                     break
 
-                # Back-trace to find URL start
-                # IMPROVED: Search up to 500 chars back and look for path patterns
                 candidate = None
                 search_start = max(0, ext_pos - 500)
 
-                # Try to find storage/docs pattern first (common in CASEN)
                 storage_pos = content.rfind('storage/', search_start, ext_pos)
                 if storage_pos != -1:
                     end_pos = ext_pos + len(ext)
                     candidate = content[storage_pos:end_pos]
                 else:
-                    # Fallback to delimiter-based extraction
                     start_delimiters = ['"', "'", '=', '>', '(', '\n', '\r']
 
                     for j in range(ext_pos, search_start, -1):
@@ -313,12 +518,9 @@ class CasenDownloader:
                             candidate = content[start_pos:end_pos]
                             break
 
-                # Validate and score
                 if candidate and len(candidate) > 10:
-                    # Clean up the candidate
                     candidate = candidate.strip()
 
-                    # Skip if it's a fragment like "stata.dta.zip" without path
                     if not candidate.startswith('http') and '/' not in candidate and len(candidate) < 30:
                         pos = ext_pos + 1
                         continue
@@ -360,6 +562,7 @@ class CasenDownloader:
         Returns:
             Score (higher is better)
         """
+        url = url.lower()
         score = 0
 
         # Awards
@@ -373,6 +576,17 @@ class CasenDownloader:
             score += 50
         if 'storage/docs/casen' in url:
             score += 40
+        # Strongly prefer canonical full-survey filenames when present.
+        if f'casen_{year}.dta' in url:
+            score += 180
+        if f'casen_{year}_stata' in url:
+            score += 160
+        if f'casen{year}stata' in url:
+            score += 240
+        if f'casen{year}' in url and 'principal' in url:
+            score += 220
+        if f'casen{year}' in url and 'full' in url and 'h4_' not in url:
+            score += 180
 
         # Penalties
         if 'spss' in url:
@@ -393,6 +607,33 @@ class CasenDownloader:
             score -= 40
         if 'cuestionario' in url:
             score -= 40
+        # Penalize known auxiliary files to avoid non-main datasets.
+        if 'factor' in url:
+            score -= 160
+        if 'raking' in url:
+            score -= 140
+        if 'deciles' in url:
+            score -= 120
+        if 'quintil' in url:
+            score -= 120
+        if 'complementaria' in url:
+            score -= 180
+        if 'provincia_comuna' in url:
+            score -= 80
+        if '/est_' in url:
+            score -= 220
+        if 'ingresos_originales' in url:
+            score -= 240
+        if 'ingresosoriginal' in url:
+            score -= 220
+        if 'ingresos_ajustados' in url or 'ingreso_ajustados' in url or 'ingresosajustados' in url:
+            score -= 220
+        if 'ingresos_mt' in url or 'ingresos_mn' in url or '_mt_' in url or '_mn_' in url:
+            score -= 180
+        if 'h4_full' in url:
+            score -= 220
+        if 'h4_r2' in url:
+            score -= 180
 
         return score
 
@@ -448,17 +689,42 @@ class CasenDownloader:
             if title_url != url:
                 variants.append(title_url)
 
-        # Try each variant with HEAD request
+        # Try each variant with HEAD first; fallback to GET when HEAD is blocked.
         for variant in variants:
             try:
                 test_url = variant.replace(' ', '%20')
                 response = self.session.head(test_url, timeout=5, allow_redirects=True)
+
                 if response.status_code == 200:
-                    if self.verbose:
-                        if variant != url:
-                            print(f"       [INFO] Usando variante: {variant}")
+                    if self.verbose and variant != url:
+                        print(f"       [INFO] Usando variante: {variant}")
                     return variant
-            except:
+
+                if response.status_code in (403, 405):
+                    response = self.session.get(test_url, timeout=10, stream=True, allow_redirects=True)
+                    status_code = response.status_code
+                    response.close()
+
+                    if status_code == 200:
+                        if self.verbose and variant != url:
+                            print(f"       [INFO] Usando variante: {variant}")
+                        return variant
+
+            except requests.RequestException:
+                try:
+                    test_url = variant.replace(' ', '%20')
+                    response = self.session.get(test_url, timeout=10, stream=True, allow_redirects=True)
+                    status_code = response.status_code
+                    response.close()
+
+                    if status_code == 200:
+                        if self.verbose:
+                            if variant != url:
+                                print(f"       [INFO] Usando variante: {variant}")
+                        return variant
+                except requests.RequestException:
+                    continue
+            except Exception:
                 continue
 
         return None
@@ -538,6 +804,52 @@ class CasenDownloader:
 
         return None
 
+    def _read_stata_dataframe(self, dta_buffer: io.BytesIO) -> Optional[pd.DataFrame]:
+        """
+        Read a .dta buffer into DataFrame with pandas, falling back to pyreadstat
+        for legacy Stata versions not supported by pandas.
+        """
+        dta_buffer.seek(0)
+
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                return pd.read_stata(dta_buffer, convert_categoricals=False)
+        except Exception as pandas_error:
+            try:
+                import pyreadstat  # type: ignore
+            except Exception:
+                if self.verbose:
+                    print(f"       [ERROR] Error al leer .dta con pandas: {str(pandas_error)[:120]}")
+                    print("       [SUGERENCIA] Instale 'pyreadstat' para soportar versiones Stata antiguas")
+                return None
+
+            # pyreadstat reads from path; use a temporary file for compatibility.
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".dta", delete=False) as tmp_file:
+                    dta_buffer.seek(0)
+                    tmp_file.write(dta_buffer.read())
+                    tmp_path = tmp_file.name
+
+                df, _meta = pyreadstat.read_dta(
+                    tmp_path,
+                    apply_value_formats=False,
+                    formats_as_category=False,
+                )
+                return df
+            except Exception as pyreadstat_error:
+                if self.verbose:
+                    print(f"       [ERROR] Error al leer .dta con pandas: {str(pandas_error)[:120]}")
+                    print(f"       [ERROR] Error al leer .dta con pyreadstat: {str(pyreadstat_error)[:120]}")
+                return None
+            finally:
+                if tmp_path and Path(tmp_path).exists():
+                    try:
+                        Path(tmp_path).unlink()
+                    except Exception:
+                        pass
+
     def _extract_and_load_dta(self, file_data: io.BytesIO, year: int) -> Optional[pd.DataFrame]:
         """
         Extract .dta from ZIP/RAR (in-memory) or load directly, then convert to DataFrame.
@@ -549,76 +861,13 @@ class CasenDownloader:
         Returns:
             DataFrame or None
         """
-        # First, try to load as direct .dta file (CASEN 2024+)
-        file_data.seek(0)  # Reset position
-        try:
+        dta_buffer = self.extract_dta_buffer(file_data, year)
+        if dta_buffer is None:
             if self.verbose:
-                print(f"       [INFO] Intentando cargar como .dta directo...")
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                df = pd.read_stata(file_data, convert_categoricals=False)
-
-            if self.verbose:
-                print(f"       [INFO] Archivo .dta cargado directamente")
-            return df
-
-        except Exception:
-            # Not a direct .dta, try as ZIP
-            if self.verbose:
-                print(f"       [INFO] No es .dta directo, intentando como ZIP...")
-
-        # Reset and try as ZIP
-        file_data.seek(0)
-        try:
-            with zipfile.ZipFile(file_data) as zf:
-                # List all files in archive
-                all_files = zf.namelist()
-
-                if self.verbose:
-                    print(f"       [DEBUG] Archivos en ZIP: {all_files[:5]}...")
-
-                # Search for .dta files (case-insensitive)
-                dta_files = [name for name in all_files if name.lower().endswith('.dta')]
-
-                if not dta_files:
-                    # Try alternate extensions or nested structures
-                    if self.verbose:
-                        print(f"       [WARNING] No se encontraron archivos .dta")
-                        print(f"       [INFO] Archivos disponibles: {all_files}")
-                    return None
-
-                # Use first .dta found (usually the main survey file)
-                dta_filename = dta_files[0]
-
-                if self.verbose:
-                    print(f"       [INFO] Extrayendo: {dta_filename}")
-
-                # Extract to memory and load
-                with zf.open(dta_filename) as dta_file:
-                    dta_buffer = io.BytesIO(dta_file.read())
-
-                    # Load with pandas (supports Stata 13+)
-                    if self.verbose:
-                        print(f"       [INFO] Cargando con pandas...")
-
-                    # Read Stata file with proper encoding handling
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore")
-                        df = pd.read_stata(dta_buffer, convert_categoricals=False)
-
-                    return df
-
-        except zipfile.BadZipFile:
-            if self.verbose:
-                print(f"       [ERROR] Archivo no es un ZIP válido ni .dta directo")
-            # Could be RAR (requires rarfile library)
+                print("       [ERROR] No se pudo obtener un archivo .dta valido")
             return None
-        except Exception as e:
-            if self.verbose:
-                # Avoid encoding errors when printing exception
-                try:
-                    print(f"       [ERROR] Error al extraer: {str(e)[:100]}")
-                except:
-                    print(f"       [ERROR] Error al extraer (encoding issue)")
-            return None
+
+        if self.verbose:
+            print("       [INFO] Cargando con pandas/pyreadstat...")
+
+        return self._read_stata_dataframe(dta_buffer)

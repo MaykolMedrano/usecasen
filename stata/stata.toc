@@ -1,0 +1,7 @@
+v 3
+d usecasen - Stata wrapper for CASEN (Chile)
+d
+d Maintainer: Maykol Medrano
+d Email: mmedrano2@uc.cl
+d
+p usecasen Download and standardize CASEN datasets by year

@@ -36,7 +36,7 @@ pip install usecasen
 
 ```bash
 git clone https://github.com/MaykolMedrano/usecasen.git
-cd usecasen/usecasen-py
+cd usecasen/python
 pip install -e .
 ```
 
@@ -80,8 +80,8 @@ labels = casen.get_labels("region", year=2022)
 
 | Parameter | Values | Default | Description |
 |-----------|--------|---------|-------------|
-| `year` | 2006-2022 | *required* | Survey year |
-| `to_stata` | `True` \| `False` | `True` | Inject into Stata memory |
+| `year` | 1990-2024 | *required* | Survey year |
+| `to_stata` | `True` \| `False` | `False` | Inject into Stata memory |
 | `verbose` | `True` \| `False` | `True` | Display progress |
 | `regex` | `True` \| `False` | `False` | Use regex in search |
 
@@ -110,7 +110,7 @@ end
 ## Package Structure
 
 ```
-usecasen-py/
+python/
 ├── casen/
 │   ├── __init__.py      # Public API
 │   ├── downloader.py    # Download and scraping logic
@@ -143,6 +143,8 @@ The library uses an intelligent scoring system to detect the correct files:
 | Stata | 17+ (optional) |
 | Pandas | 1.3+ |
 | Requests | 2.25+ |
+| Pyreadstat | 1.2.7+ (fallback for legacy .dta versions) |
+| RAR extractor | WinRAR / 7-Zip / unrar / unar / bsdtar (for older CASEN years) |
 
 ---
 
