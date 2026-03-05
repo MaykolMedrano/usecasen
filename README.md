@@ -69,7 +69,7 @@ Comando robusto, compatible desde Stata 14 hasta 19, diseñado para procesar y c
 **Instalación Rápida:**
 
 ```stata
-net install usecasen, from("https://raw.githubusercontent.com/MaykolMedrano/usecasen/main/stata") replace
+net install usecasen, from("https://raw.githubusercontent.com/MaykolMedrano/usecasen/master/stata") replace
 ```
 
 **Uso Clásico:**
