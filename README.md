@@ -1,5 +1,4 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/MaykolMedrano/usecasen/main/docs/logo.png" alt="usecasen logo" width="200" onerror="this.style.display='none'"/>
   
 # usecasen
   
@@ -99,16 +98,6 @@ usecasen
  |- .github/workflows/  # CI/CD (Pytest Actions)
  `- README.md           # This file
 ```
-
----
-
-## Autor
-
-| ![Maykol Medrano](https://avatars.githubusercontent.com/u/74303889?v=4&s=100) |
-| :---: |
-| **Maykol Medrano** <br> Pontificia Universidad Católica de Chile <br> [@MaykolMedrano](https://github.com/MaykolMedrano) |
-
-Email de Contacto: **<mmedrano2@uc.cl>**
 
 ---
 
