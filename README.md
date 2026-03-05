@@ -4,12 +4,11 @@
   
   **La suite profesional definitiva para descarga, recodificación y análisis de la Encuesta CASEN (Chile) en Python y Stata.**
 
-  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-  [![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/)
-  [![Stata](https://img.shields.io/badge/Stata-14%2B-1c4587.svg)](https://www.stata.com/)
-  [![Version](https://img.shields.io/badge/version-1.0.0--v3.2.0-blue.svg)](https://github.com/MaykolMedrano/usecasen)
-  [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](https://github.com/MaykolMedrano/usecasen)
-  
+  [![PyPI Version](https://img.shields.io/pypi/v/usecasen?style=flat-square&color=blue)](https://pypi.org/project/usecasen/)
+  [![Language Support](https://img.shields.io/badge/Python_3.8%2B_%7C_Stata_14%2B-blue?style=flat-square)](https://www.python.org/)
+  [![Tests passing](https://img.shields.io/github/actions/workflow/status/MaykolMedrano/usecasen/python-app.yml?branch=main&style=flat-square)](https://github.com/MaykolMedrano/usecasen/actions)
+  [![Downloads](https://img.shields.io/pypi/dm/usecasen?style=flat-square&color=blue)](https://pypi.org/project/usecasen/)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
   [Ver Documentación Python](python/README.md) • [Ver Documentación Stata](stata/README.md) • [Reportar Bug](https://github.com/MaykolMedrano/usecasen/issues)
 </div>
 
